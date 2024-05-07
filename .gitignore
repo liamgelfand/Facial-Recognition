@@ -1,0 +1,6 @@
+# Ignore virtual environment
+facial-recognition/
+# Ignore model files
+*.h5
+# Ignore commands
+commands.txt
