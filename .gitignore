@@ -4,3 +4,5 @@ facial-recognition/
 *.h5
 # Ignore commands
 commands.txt
+# Ignore dataset
+processed_dataset/

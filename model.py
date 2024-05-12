@@ -45,5 +45,5 @@ history = model.fit(train_images, train_labels, epochs=10, validation_data=(test
 test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
 print('\nTest accuracy:', test_acc)
 
-# Save the model
-model.save('emotion_recognition_model.h5')
+# Correct way to save the model according to the new Keras API
+model.save('emotion_recognition_model.h5', save_format='h5')
