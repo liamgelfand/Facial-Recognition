@@ -15,6 +15,9 @@ label_encoder = LabelEncoder()
 train_labels = label_encoder.fit_transform(train_labels)
 test_labels = label_encoder.transform(test_labels)
 
+# Print the classes to see the mapping
+print("Label Mapping:", label_encoder.classes_)
+
 # Reshape the images to add channel dimension
 train_images = train_images.reshape((-1, 48, 48, 1))
 test_images = test_images.reshape((-1, 48, 48, 1))
@@ -33,7 +36,6 @@ model = tf.keras.models.Sequential([
     tf.keras.layers.Dropout(0.5),
     tf.keras.layers.Dense(7, activation='softmax')
 ])
-
 
 # Compile the model
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
