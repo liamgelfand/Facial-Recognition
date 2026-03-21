@@ -30,6 +30,9 @@ def main():
     train_images = train_images / 255.0
     test_images = test_images / 255.0
 
+    # Create output directory if it doesn't exist
+    os.makedirs(save_dir, exist_ok=True)
+
     # Save the processed images and labels
     np.save(os.path.join(save_dir, 'train_images.npy'), train_images)
     np.save(os.path.join(save_dir, 'train_labels.npy'), train_labels)
