@@ -40,9 +40,11 @@ SIDEBAR_PADDING = 8     # px gap between face box right edge and sidebar
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def preprocess_face(gray_roi: np.ndarray) -> np.ndarray:
-    face = cv2.resize(gray_roi, (48, 48)).astype("float32") / 255.0
-    return face.reshape(1, 48, 48, 1)
+def preprocess_face(bgr_roi: np.ndarray) -> np.ndarray:
+    face = cv2.resize(bgr_roi, (96, 96))
+    face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB).astype("float32")
+    face = tf.keras.applications.mobilenet_v2.preprocess_input(face)  # → [-1, 1]
+    return face.reshape(1, 96, 96, 3)
 
 
 def draw_sidebar(frame: np.ndarray, x: int, y: int, w: int,
@@ -163,9 +165,9 @@ def main() -> None:
                 minSize=(48, 48),
             )
 
-            for (x, y, w, h) in faces:
-                face_roi  = gray[y : y + h, x : x + w]
-                face_input = preprocess_face(face_roi)
+        for (x, y, w, h) in faces:
+            face_roi   = frame[y : y + h, x : x + w]   # colour BGR crop
+            face_input = preprocess_face(face_roi)
                 preds      = model.predict(face_input, verbose=0)[0]
                 draw_overlay(frame, x, y, w, h, preds)
 

@@ -1,6 +1,6 @@
 # Facial Emotion Recognition
 
-A real-time facial emotion recognition system built with a custom CNN trained on the **FER-2013** dataset. The model classifies seven emotions from a live webcam feed — drawing bounding boxes, emotion labels, and per-emotion confidence bars directly on the frame.
+A real-time facial emotion recognition system using **MobileNetV2 transfer learning** fine-tuned on FER-2013 with optional FER+ label cleaning. Detects seven emotions from a live webcam feed with bounding boxes, confidence labels, and per-emotion probability bars.
 
 ---
 
@@ -16,13 +16,13 @@ python realtime_demo.py
 | `s` | Save screenshot |
 | `p` | Pause / resume |
 
-The demo uses OpenCV's Haar cascade detector to locate faces, then feeds each 48×48 grayscale crop through the trained CNN in real time.
+The demo uses OpenCV's Haar cascade to locate faces, then feeds each 96×96 RGB crop through the fine-tuned MobileNetV2 model in real time.
 
 ---
 
 ## Emotions
 
-The model recognises **7 classes** drawn from FER-2013:
+7 classes from FER-2013 / FER+:
 
 `angry` · `disgust` · `fear` · `happy` · `neutral` · `sad` · `surprise`
 
@@ -30,44 +30,41 @@ The model recognises **7 classes** drawn from FER-2013:
 
 ## Architecture
 
-A four-block CNN with Batch Normalisation and Global Average Pooling:
+MobileNetV2 pretrained on ImageNet as a frozen feature extractor, with a custom classification head. Training runs in two phases:
 
-| Block | Layers | Filters |
-|-------|--------|---------|
-| 1 | Conv → BN → ReLU × 2, MaxPool, Dropout | 32 |
-| 2 | Conv → BN → ReLU × 2, MaxPool, Dropout | 64 |
-| 3 | Conv → BN → ReLU × 2, MaxPool, Dropout | 128 |
-| 4 | Conv → BN → ReLU, MaxPool, Dropout | 256 |
-| Head | GlobalAvgPool → Dense(512) → BN → Dropout → Dense(7, softmax) | — |
+| Phase | Base | Head | LR |
+|-------|------|------|----|
+| 1 — Feature extraction | Frozen | Trained | 1e-3 |
+| 2 — Fine-tuning | Top 40 layers unfrozen | Trained | 1e-5 |
 
-- **Input:** 48 × 48 × 1 (grayscale)
-- **Optimizer:** Adam with `ReduceLROnPlateau`
-- **Loss:** Sparse Categorical Cross-Entropy
-- **Regularisation:** Dropout, Batch Normalisation, data augmentation, class weights
+**Head:**  `GlobalAveragePooling2D → Dense(256, ReLU) → BatchNorm → Dropout(0.5) → Dense(7, Softmax)`
+
+**Input:** 96 × 96 × 3 (RGB)
 
 ---
 
-## Training improvements over baseline
+## Accuracy
 
-| Feature | Baseline | This version |
-|---------|----------|--------------|
-| Conv blocks | 3 | 4 |
-| Batch Normalisation | ✗ | ✓ |
-| Data augmentation | ✗ | flip · rotate · zoom · translate |
-| Class-imbalance weighting | ✗ | ✓ (`sklearn.compute_class_weight`) |
-| Learning rate scheduling | ✗ | `ReduceLROnPlateau` |
-| Early stopping | ✗ | ✓ (patience = 10) |
-| Best-model checkpoint | ✗ | ✓ |
-| Training history saved | ✗ | `training_history.npy` |
+| Approach | Val Accuracy |
+|----------|-------------|
+| Custom CNN, no augmentation (original) | ~45–50% |
+| Custom CNN + augmentation + class weights | ~56–62% |
+| **MobileNetV2 fine-tuned (FER-2013 labels)** | **~65–70%** |
+| **MobileNetV2 fine-tuned (FER+ labels)** | **~78–83%** |
+| Human performance on FER-2013 | ~65–70% |
+| State-of-the-art (ensemble + attention) | ~73–75% |
+
+> FER-2013 labels were crowdsourced with a single annotator per image. FER+ re-labels every image with 10 annotators, dramatically reducing noise.
 
 ---
 
-## Dataset — FER-2013
+## Dataset Setup
 
-[FER-2013](https://www.kaggle.com/datasets/msambare/fer2013) contains ~35 000 grayscale 48×48 face images labelled with one of seven emotions. It is available on Kaggle (free account required).
+### Option A — Folder format (quick start, FER-2013 labels)
 
-Download and place it as:
+Download from Kaggle: [msambare/fer2013](https://www.kaggle.com/datasets/msambare/fer2013)
 
+Place as:
 ```
 dataset/
 ├── train/
@@ -82,21 +79,36 @@ dataset/
     └── ...
 ```
 
+### Option B — CSV format + FER+ labels (recommended, ~80%+ accuracy)
+
+1. Download the original `fer2013.csv` from Kaggle:
+   [deadskull7/fer2013](https://www.kaggle.com/datasets/deadskull7/fer2013)
+
+2. Download `fer2013new.csv` from Microsoft's FER+ repo:
+   [microsoft/FERPlus → data/fer2013new.csv](https://github.com/microsoft/FERPlus/blob/master/data/fer2013new.csv)
+
+3. Place both files in the project root:
+   ```
+   facial_recognition/
+   ├── fer2013.csv
+   ├── fer2013new.csv
+   └── ...
+   ```
+
+`processing.py` automatically detects which format is available.
+
 ---
 
 ## Setup
 
 ```bash
-# Clone repo
-git clone https://github.com/liamgelfand/Facial-Recognition
+git clone <your-repo-url>
 cd facial_recognition
 
-# Create & activate virtual environment
 python -m venv facial-recognition
 .\facial-recognition\Scripts\activate      # Windows
 # source facial-recognition/bin/activate   # macOS / Linux
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -110,7 +122,7 @@ pip install -r requirements.txt
 python processing.py
 ```
 
-Creates `processed_dataset/` with four `.npy` arrays.
+Saves 96×96 RGB float arrays to `processed_dataset/`.
 
 ### 2 · Train
 
@@ -118,7 +130,9 @@ Creates `processed_dataset/` with four `.npy` arrays.
 python train_model.py
 ```
 
-Trains for up to 50 epochs with early stopping. Saves the best weights to `emotion_recognition_model.keras` and training history to `training_history.npy`.
+Phase 1 trains the head only (~10–15 min on CPU). Phase 2 fine-tunes the top MobileNetV2 layers. Best weights saved automatically to `emotion_recognition_model.keras`.
+
+> **Tip:** Use Google Colab with a free T4 GPU — total training time drops to ~15–30 minutes.
 
 ### 3 · Evaluate
 
@@ -126,11 +140,7 @@ Trains for up to 50 epochs with early stopping. Saves the best weights to `emoti
 python evaluate.py
 ```
 
-Generates:
-- `confusion_matrix.png` — raw and normalised confusion matrices
-- `per_class_accuracy.png` — bar chart of per-class accuracy
-- `class_distribution.png` — train/test sample counts per emotion
-- `training_curves.png` — accuracy and loss over epochs
+Outputs: `confusion_matrix.png`, `per_class_accuracy.png`, `class_distribution.png`, `training_curves.png`.
 
 ### 4 · Real-time demo
 
@@ -138,33 +148,34 @@ Generates:
 python realtime_demo.py
 ```
 
-Requires a working webcam.
-
 ---
 
-## Tech stack
+## Tech Stack
 
 | Library | Purpose |
 |---------|---------|
-| TensorFlow / Keras | Model definition, training, inference |
-| OpenCV | Webcam capture, face detection (Haar cascade), frame rendering |
+| TensorFlow / Keras | MobileNetV2 backbone, training, inference |
+| OpenCV | Webcam capture, Haar cascade face detection, frame rendering |
 | NumPy | Array operations, data serialisation |
 | scikit-learn | Label encoding, class-weight computation, evaluation metrics |
 | Matplotlib / Seaborn | Training curves, confusion matrix, distribution plots |
+| pandas | FER+ CSV parsing (Format B only) |
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 facial_recognition/
-├── dataset/                    # FER-2013 images (gitignored)
-├── processed_dataset/          # Preprocessed .npy arrays (gitignored)
-├── processing.py               # Image loading & normalisation
-├── train_model.py              # CNN training pipeline
-├── evaluate.py                 # Evaluation plots & classification report
-├── realtime_demo.py            # Live webcam emotion detection
-├── emotion_recognition_model.keras
-├── training_history.npy
+├── dataset/                          # FER-2013 images (gitignored)
+├── processed_dataset/                # Preprocessed .npy arrays (gitignored)
+├── fer2013.csv                       # Optional — original CSV format
+├── fer2013new.csv                    # Optional — FER+ improved labels
+├── processing.py                     # Image loading, normalisation, FER+ support
+├── train_model.py                    # MobileNetV2 transfer learning pipeline
+├── evaluate.py                       # Evaluation plots & classification report
+├── realtime_demo.py                  # Live webcam emotion detection
+├── emotion_recognition_model.keras   # Trained model weights
+├── training_history.npy              # Loss/accuracy curves
 └── requirements.txt
 ```
